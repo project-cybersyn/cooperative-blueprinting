@@ -35,6 +35,7 @@
 ---@field name defines.events
 ---@field tick int64
 ---@field blueprint LuaItemStack|LuaRecord The blueprint that was extracted.
+---@field mapping table<uint32, LuaEntity> The mapping from blueprint entity indices to world entity indices after extraction. This may be different from the original mapping if the blueprint was modified during extraction.
 
 ---@class CooperativeBlueprinting.Entry
 ---@field blueprint_entity BlueprintEntity The Factorio blueprint entity.
@@ -43,7 +44,5 @@
 ---@field deleted boolean? If `true`, this entry has been deleted and will not be present in the final blueprint.
 ---@field retagged boolean? If `true`, this entry's tags have been modified.
 ---@field spliced boolean? If `true`, this entry has been modified in a way that requires the blueprint to be rewritten. This will always be true when `deleted` is true, but may also be true for other modifications.
-
----@alias CooperativeBlueprinting.EventBindings table<defines.events, function>
 
 ---@class (exact) CooperativeBlueprinting.EntryFilter

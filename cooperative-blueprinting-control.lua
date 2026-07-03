@@ -20,9 +20,7 @@ local EMPTY = setmetatable({}, {
 ---@return T dest
 local function assign(dest, ...)
 	local n = select("#", ...)
-	if n == 0 then
-		return dest
-	end
+	if n == 0 then return dest end
 	for i = 1, n do
 		local src = select(i, ...)
 		if type(src) == "table" then
@@ -37,48 +35,36 @@ end
 ---@param player_identification PlayerIdentification?
 ---@return int? player_index
 local function player_identification_to_index(player_identification)
-	if not player_identification then
-		return nil
-	end
+	if not player_identification then return nil end
 	if type(player_identification) == "table" then
 		return player_identification.index
 	else
 		local player = game.get_player(player_identification)
-		if player then
-			return player.index
-		end
+		if player then return player.index end
 	end
 end
 
 ---@param surface_identification SurfaceIdentification?
 ---@return int? surface_index
 local function surface_identification_to_index(surface_identification)
-	if not surface_identification then
-		return nil
-	end
+	if not surface_identification then return nil end
 	if type(surface_identification) == "table" then
 		return surface_identification.index
 	else
 		local surface = game.get_surface(surface_identification)
-		if surface then
-			return surface.index
-		end
+		if surface then return surface.index end
 	end
 end
 
 ---@param force_identification ForceID?
 ---@return int? force_index
 local function force_identification_to_index(force_identification)
-	if not force_identification then
-		return nil
-	end
+	if not force_identification then return nil end
 	if type(force_identification) == "table" then
 		return force_identification.index
 	else
 		local force = game.forces[force_identification]
-		if force then
-			return force.index
-		end
+		if force then return force.index end
 	end
 end
 
@@ -95,21 +81,15 @@ local function get_actual_blueprint(player, record, stack)
 			return record
 		end
 	elseif stack then
-		if not stack.valid_for_read then
-			return
-		end
+		if not stack.valid_for_read then return end
 		while stack and stack.is_blueprint_book do
 			local main_inventory = stack.get_inventory(defines.inventory.item_main)
-			if not main_inventory then
-				return
-			end
+			if not main_inventory then return end
 			stack = main_inventory[
 				stack.active_index --[[@as uint]]
 			]
 		end
-		if stack and stack.is_blueprint then
-			return stack
-		end
+		if stack and stack.is_blueprint then return stack end
 	end
 end
 
@@ -120,16 +100,11 @@ end
 ---@param ev EventData.on_pre_build
 local function on_pre_build(ev)
 	local player = game.get_player(ev.player_index)
-	if not player then
-		return
-	end
-	if not player.is_cursor_blueprint() then
-		return
-	end
-	local bp = get_actual_blueprint(player, player.cursor_record, player.cursor_stack)
-	if not bp then
-		return
-	end
+	if not player then return end
+	if not player.is_cursor_blueprint() then return end
+	local bp =
+		get_actual_blueprint(player, player.cursor_record, player.cursor_stack)
+	if not bp then return end
 
 	---@type CooperativeBlueprinting.BlueprintOrientationData
 	local orientation = {
@@ -149,7 +124,10 @@ local function on_pre_build(ev)
 		build_mode = ev.build_mode or defines.build_mode.normal,
 		force_index = player.force_index,
 	}
-	script.raise_event("cooperative-blueprinting-v1-on_pre_build_blueprint", prebuild_ev)
+	script.raise_event(
+		"cooperative-blueprinting-v1-on_pre_build_blueprint",
+		prebuild_ev
+	)
 end
 
 --------------------------------------------------------------------------------
@@ -160,6 +138,9 @@ end
 ---@field blueprint_key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
 ---@field entries CooperativeBlueprinting.Entry[] The entries of the blueprint being extracted.
 ---@field blueprintish LuaItemStack|LuaRecord The blueprint being extracted.
+---@field original_mapping table<uint32, LuaEntity> The original mapping from blueprint entity indices to world entity indices.
+---@field new_entities BlueprintEntity[]? The new blueprint entities after splicing, if any.
+---@field new_mapping table<uint32, LuaEntity>? The new mapping from blueprint entity indices to world entity indices after splicing, if any.
 ---@field readable boolean? Whether read operations on entries are allowed.
 ---@field writable boolean? Whether write operations on entries are allowed.
 ---@field spliced boolean? Whether an edit has been made that requires the blueprint to be altogether rewritten.
@@ -186,28 +167,28 @@ local function begin_extraction(blueprintish, map)
 		blueprint_key = math.random(1, INT32_MAX) --[[@as CooperativeBlueprinting.BlueprintKey]],
 		entries = entries,
 		blueprintish = blueprintish,
+		original_mapping = map,
 	}
 end
 
-local function end_extraction()
-	extraction_state = {}
-end
+local function end_extraction() extraction_state = {} end
 
 local function fixup_extraction()
-	if not extraction_state.spliced then
-		return
-	end
+	if not extraction_state.spliced then return end
 
 	-- Splice when needed. Keep track of entry index to new
 	-- blueprint index mapping
 	---@type BlueprintEntity[]
 	local new_bp_entities = {}
+	---@type table<uint32, LuaEntity>
+	local new_mapping = {}
 	---@type table<uint, uint>
 	local old_to_new_index = {}
 	for i, entry in ipairs(extraction_state.entries) do
 		if not entry.deleted then
 			local new_index = #new_bp_entities + 1
 			new_bp_entities[new_index] = entry.blueprint_entity
+			new_mapping[new_index] = entry.world_entity
 			old_to_new_index[i] = new_index
 		end
 	end
@@ -234,13 +215,27 @@ local function fixup_extraction()
 	end
 
 	extraction_state.blueprintish.set_blueprint_entities(new_bp_entities)
+	extraction_state.new_entities = new_bp_entities
+	extraction_state.new_mapping = new_mapping
+end
+
+local function post_extraction()
+	local post_ev = {
+		blueprint = extraction_state.blueprintish,
+	}
+	if extraction_state.new_mapping then
+		post_ev.mapping = extraction_state.new_mapping
+	else
+		post_ev.mapping = extraction_state.original_mapping
+	end
+	script.raise_event("cooperative-blueprinting-v1-on_post_extract", post_ev)
 end
 
 ---@param blueprintish LuaItemStack|LuaRecord
 ---@param map table<uint32, LuaEntity>
 local function extract(blueprintish, map)
 	begin_extraction(blueprintish, map)
-	---@diagnostic disable-next-line: missing-fields
+
 	local ev = {
 		blueprint_key = extraction_state.blueprint_key,
 	}
@@ -255,31 +250,21 @@ local function extract(blueprintish, map)
 	extraction_state.writable = false
 	fixup_extraction()
 
-	local post_ev = {
-		blueprint = extraction_state.blueprintish,
-	}
-	script.raise_event("cooperative-blueprinting-v1-on_post_extract", post_ev)
+	post_extraction()
+
 	end_extraction()
 end
 
 ---@param ev EventData.on_player_setup_blueprint
 local function on_player_setup_blueprint(ev)
 	local player = game.get_player(ev.player_index)
-	if not player then
-		return
-	end
+	if not player then return end
 	local bp = get_actual_blueprint(player, ev.record, ev.stack)
-	if not bp then
-		return
-	end
+	if not bp then return end
 	local lazy_bp_to_world = ev.mapping
-	if not lazy_bp_to_world or not lazy_bp_to_world.valid then
-		return
-	end
+	if not lazy_bp_to_world or not lazy_bp_to_world.valid then return end
 	local bp_to_world = lazy_bp_to_world.get() --[[@as table<uint32, LuaEntity>? ]]
-	if not bp_to_world then
-		return
-	end
+	if not bp_to_world then return end
 
 	extract(bp, bp_to_world)
 end
@@ -291,17 +276,17 @@ end
 local remote_interface = {}
 
 ---@return string
-function remote_interface.get_host_name()
-	return script.mod_name
-end
+function remote_interface.get_host_name() return script.mod_name end
 
+---Replaces the operation of `LuaItemStack|LuaRecord.build_blueprint` with a version that raises the `on_pre_build_blueprint` event before building the blueprint. This allows mods to inspect the blueprint before it is built.
 ---@param blueprintish LuaItemStack|LuaRecord
 ---@param build_blueprint_args LuaRecord.build_blueprint_param
 ---@return LuaEntity[]? entities The array of created ghosts returned by native `build_blueprint`.
 function remote_interface.build_blueprint(blueprintish, build_blueprint_args)
 	if build_blueprint_args.raise_built == nil then
-		---@diagnostic disable-next-line: missing-fields
-		build_blueprint_args = assign({} --[[@as LuaRecord.build_blueprint_param]], build_blueprint_args)
+		build_blueprint_args =
+			---@diagnostic disable-next-line: missing-fields
+			assign({} --[[@as LuaRecord.build_blueprint_param]], build_blueprint_args)
 		build_blueprint_args.raise_built = true
 	end
 
@@ -311,7 +296,8 @@ function remote_interface.build_blueprint(blueprintish, build_blueprint_args)
 		direction = build_blueprint_args.direction or defines.direction.north,
 	}
 
-	local surface_index = surface_identification_to_index(build_blueprint_args.surface)
+	local surface_index =
+		surface_identification_to_index(build_blueprint_args.surface)
 	if not surface_index then
 		error("build_blueprint_args.surface must be a valid surface")
 	end
@@ -319,7 +305,8 @@ function remote_interface.build_blueprint(blueprintish, build_blueprint_args)
 	if not force_index then
 		error("build_blueprint_args.force must be a valid force")
 	end
-	local player_index = player_identification_to_index(build_blueprint_args.by_player)
+	local player_index =
+		player_identification_to_index(build_blueprint_args.by_player)
 
 	---@diagnostic disable-next-line: missing-fields
 	---@type CooperativeBlueprinting.OnPreBuildBlueprint
@@ -336,13 +323,12 @@ function remote_interface.build_blueprint(blueprintish, build_blueprint_args)
 	return blueprintish.build_blueprint(build_blueprint_args)
 end
 
+---Replaces the operation of `LuaItemStack|LuaRecord.create_blueprint` with a version that performs the Cooperative Blueprinting extraction process.
 ---@param blueprintish LuaItemStack|LuaRecord The blueprint to setup. Note that this must be a blueprint in a setupable state (valid to call native `create_blueprint` on).
 ---@param create_blueprint_args LuaRecord.create_blueprint_param
----@return table<uint32, LuaEntity>? entity_map The map from blueprint entity indices to world entity indices returned by native `create_blueprint`.
 function remote_interface.create_blueprint(blueprintish, create_blueprint_args)
 	local entities = blueprintish.create_blueprint(create_blueprint_args)
 	extract(blueprintish, entities)
-	return entities
 end
 
 ---Get the entries of the blueprint being extracted. This is a read-operation
@@ -353,10 +339,9 @@ end
 function remote_interface.get_entries(key, filter)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("get_entries can only be called during on_pre_extract or on_extract for the blueprint being extracted")
-	end
-	if not extraction_state.readable then
-		error("get_entries can only be called during on_pre_extract or on_extract for the blueprint being extracted")
+		error(
+			"get_entries can only be called synchronously for the blueprint being extracted"
+		)
 	end
 	return extraction_state.entries
 end
@@ -369,12 +354,7 @@ function remote_interface.get_num_entries(key)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
 		error(
-			"get_num_entries can only be called during on_pre_extract or on_extract for the blueprint being extracted"
-		)
-	end
-	if not extraction_state.readable then
-		error(
-			"get_num_entries can only be called during on_pre_extract or on_extract for the blueprint being extracted"
+			"get_num_entries can only be called synchronously for the blueprint being extracted"
 		)
 	end
 	return #extraction_state.entries
@@ -388,10 +368,9 @@ end
 function remote_interface.get_entry(key, index)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("get_entry can only be called during on_pre_extract or on_extract for the blueprint being extracted")
-	end
-	if not extraction_state.readable then
-		error("get_entry can only be called during on_pre_extract or on_extract for the blueprint being extracted")
+		error(
+			"get_entry can only be called synchronously for the blueprint being extracted"
+		)
 	end
 	return extraction_state.entries[index]
 end
@@ -405,15 +384,17 @@ end
 function remote_interface.get_tag(key, index, tag)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("get_tag can only be called during on_pre_extract or on_extract for the blueprint being extracted")
+		error(
+			"get_tag can only be called during on_pre_extract or on_extract for the blueprint being extracted"
+		)
 	end
 	if not extraction_state.readable then
-		error("get_tag can only be called during on_pre_extract or on_extract for the blueprint being extracted")
+		error(
+			"get_tag can only be called during on_pre_extract or on_extract for the blueprint being extracted"
+		)
 	end
 	local entry = extraction_state.entries[index] --[[@as CooperativeBlueprinting.Entry? ]]
-	if (not entry) or entry.deleted then
-		return nil
-	end
+	if (not entry) or entry.deleted then return nil end
 	local entry_tags = entry.blueprint_entity.tags or EMPTY
 	return entry_tags[tag]
 end
@@ -425,15 +406,17 @@ end
 function remote_interface.get_tags(key, index)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("get_tags can only be called during on_pre_extract or on_extract for the blueprint being extracted")
+		error(
+			"get_tags can only be called during on_pre_extract or on_extract for the blueprint being extracted"
+		)
 	end
 	if not extraction_state.readable then
-		error("get_tags can only be called during on_pre_extract or on_extract for the blueprint being extracted")
+		error(
+			"get_tags can only be called during on_pre_extract or on_extract for the blueprint being extracted"
+		)
 	end
 	local entry = extraction_state.entries[index] --[[@as CooperativeBlueprinting.Entry? ]]
-	if (not entry) or entry.deleted then
-		return nil
-	end
+	if (not entry) or entry.deleted then return nil end
 	return entry.blueprint_entity.tags or {}
 end
 
@@ -447,15 +430,17 @@ end
 function remote_interface.set_tag(key, index, tag, value)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("set_tag can only be called during on_extract for the blueprint being extracted")
+		error(
+			"set_tag can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	if not extraction_state.writable then
-		error("set_tag can only be called during on_extract for the blueprint being extracted")
+		error(
+			"set_tag can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	local entry = extraction_state.entries[index] --[[@as CooperativeBlueprinting.Entry? ]]
-	if (not entry) or entry.deleted then
-		return false
-	end
+	if (not entry) or entry.deleted then return false end
 	local entry_tags = entry.blueprint_entity.tags or {}
 	entry_tags[tag] = value
 	if next(entry_tags) then
@@ -465,7 +450,10 @@ function remote_interface.set_tag(key, index, tag, value)
 	end
 
 	if not entry.spliced then
-		extraction_state.blueprintish.set_blueprint_entity_tags(entry.index, entry_tags)
+		extraction_state.blueprintish.set_blueprint_entity_tags(
+			entry.index,
+			entry_tags
+		)
 	end
 
 	entry.retagged = true
@@ -481,19 +469,24 @@ end
 function remote_interface.set_tags(key, index, tags)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("set_tags can only be called during on_extract for the blueprint being extracted")
+		error(
+			"set_tags can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	if not extraction_state.writable then
-		error("set_tags can only be called during on_extract for the blueprint being extracted")
+		error(
+			"set_tags can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	local entry = extraction_state.entries[index] --[[@as CooperativeBlueprinting.Entry? ]]
-	if (not entry) or entry.deleted then
-		return false
-	end
+	if (not entry) or entry.deleted then return false end
 	entry.blueprint_entity.tags = tags
 
 	if not entry.spliced then
-		extraction_state.blueprintish.set_blueprint_entity_tags(entry.index, tags or {})
+		extraction_state.blueprintish.set_blueprint_entity_tags(
+			entry.index,
+			tags or {}
+		)
 	end
 
 	entry.retagged = true
@@ -508,15 +501,17 @@ end
 function remote_interface.merge_tags(key, index, tags)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("merge_tags can only be called during on_extract for the blueprint being extracted")
+		error(
+			"merge_tags can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	if not extraction_state.writable then
-		error("merge_tags can only be called during on_extract for the blueprint being extracted")
+		error(
+			"merge_tags can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	local entry = extraction_state.entries[index] --[[@as CooperativeBlueprinting.Entry? ]]
-	if (not entry) or entry.deleted then
-		return false
-	end
+	if (not entry) or entry.deleted then return false end
 	local entry_tags = entry.blueprint_entity.tags or {}
 	for k, v in pairs(tags) do
 		entry_tags[k] = v
@@ -524,7 +519,10 @@ function remote_interface.merge_tags(key, index, tags)
 	entry.blueprint_entity.tags = entry_tags
 
 	if not entry.spliced then
-		extraction_state.blueprintish.set_blueprint_entity_tags(entry.index, entry_tags)
+		extraction_state.blueprintish.set_blueprint_entity_tags(
+			entry.index,
+			entry_tags
+		)
 	end
 
 	entry.retagged = true
@@ -538,15 +536,17 @@ end
 function remote_interface.delete(key, index)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("delete can only be called during on_extract for the blueprint being extracted")
+		error(
+			"delete can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	if not extraction_state.writable then
-		error("delete can only be called during on_extract for the blueprint being extracted")
+		error(
+			"delete can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	local entry = extraction_state.entries[index] --[[@as CooperativeBlueprinting.Entry? ]]
-	if (not entry) or entry.deleted then
-		return false
-	end
+	if (not entry) or entry.deleted then return false end
 	entry.deleted = true
 	entry.spliced = true
 	extraction_state.spliced = true
@@ -561,10 +561,14 @@ end
 function remote_interface.insert(key, blueprint_entity, world_entity)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("insert can only be called during on_extract for the blueprint being extracted")
+		error(
+			"insert can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	if not extraction_state.writable then
-		error("insert can only be called during on_extract for the blueprint being extracted")
+		error(
+			"insert can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	local new_entity = assign({}, blueprint_entity) --[[@as BlueprintEntity ]]
 	local new_index = #extraction_state.entries + 1
@@ -587,21 +591,21 @@ end
 function remote_interface.replace(key, index, blueprint_entity, world_entity)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
-		error("replace can only be called during on_extract for the blueprint being extracted")
+		error(
+			"replace can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	if not extraction_state.writable then
-		error("replace can only be called during on_extract for the blueprint being extracted")
+		error(
+			"replace can only be called during on_extract for the blueprint being extracted"
+		)
 	end
 	local entry = extraction_state.entries[index] --[[@as CooperativeBlueprinting.Entry? ]]
-	if (not entry) or entry.deleted then
-		return false
-	end
+	if (not entry) or entry.deleted then return false end
 	local old_bp_entity = entry.blueprint_entity
 	local bp_entity = assign({}, blueprint_entity) --[[@as BlueprintEntity ]]
 	bp_entity.entity_number = old_bp_entity.entity_number
-	if not bp_entity.position then
-		bp_entity.position = old_bp_entity.position
-	end
+	if not bp_entity.position then bp_entity.position = old_bp_entity.position end
 	if not bp_entity.direction then
 		bp_entity.direction = old_bp_entity.direction
 	end
@@ -630,7 +634,7 @@ end
 ---event bindings. Your mod MUST attach these event bindings to the given
 ---game events using `script.on_event` or other appropriate means. Your mod
 ---MUST NOT filter these events.
----@return CooperativeBlueprinting.EventBindings? event_bindings
+---@return table<defines.events, function>? event_bindings
 function lib.cooperative_blueprinting_control_phase()
 	local cb_data_proto = prototypes.mod_data["cooperative-blueprinting"]
 	local cb_data = cb_data_proto and cb_data_proto.data
