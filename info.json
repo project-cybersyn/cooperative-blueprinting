@@ -1,0 +1,18 @@
+{
+  "name": "0-cooperative-blueprinting",
+  "version": "0.1.0",
+  "title": "Cooperative Blueprinting Host",
+  "author": "The LORD thy GOD",
+  "contact": "https://github.com/project-cybersyn/cooperative-blueprinting",
+  "homepage": "https://github.com/project-cybersyn/cooperative-blueprinting",
+  "description": "A minimal Host for the Cooperative Blueprinting protocol. (This mod is a library used by other mods. It makes no gameplay changes.)",
+  "factorio_version": "2.1",
+  "dependencies": [ "base >= 2.1.7" ],
+  "package": {
+    "git_publish_branch": "main",
+    "ignore": [ "crowdin.yml", "stylua.toml", "tests", "doc/**", "site/**", ".gitmodules", ".editorconfig" ],
+    "scripts": {
+    },
+    "sync_portal_details": true
+  }
+}

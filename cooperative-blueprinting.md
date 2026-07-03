@@ -4,11 +4,11 @@ Cooperative Blueprinting is an attempt to create community-driven fixes for a fe
 
 Cooperative Blueprinting is called *cooperative* because it relies on the voluntary participation of mod authors; mods that use scripts to edit or deploy blueprints without using the cooperative protocol can simply re-surface the issues the protocol is designed to fix.
 
-I hope that affected mod authors (which should hopefully be few in number) will consider and adopt this protocol.
+I hope that affected mod authors (which should hopefully be very few in number) will consider and adopt this protocol.
 
 ## Do I need Cooperative Blueprinting?
 
-The good news is that **99.9% of Factorio mods don't need to think about this at all** and that probably includes your mod. Unless your mod has a nontrivial control phase and:
+The good news is that **99.99% of Factorio mods don't need to think about this at all** and that probably includes your mod. Unless your mod has a nontrivial control phase and:
 
 1) calls one of the following Factorio API methods on a `LuaRecord` or `LuaItemStack`:
 
@@ -32,21 +32,21 @@ The good news is that **99.9% of Factorio mods don't need to think about this at
 
 Cooperative Blueprinting is designed to solve four very specific issues:
 
-1) If one mod edits a blueprint during blueprint setup (e.g. using `set_blueprint_entities`), this clobbers data for mods running later in the load order. In particular they will not be able to make use of the `mapping` from blueprint to world entities. (This issue is actually documented in the Factorio API docs.)
+1) If one mod edits a blueprint during blueprint setup using `set_blueprint_entities`, this clobbers data for mods running later in the load order. In particular they will not be able to make use of the `mapping` from blueprint to world entities. (This issue is actually documented in the Factorio API docs.)
 
 2) The `on_pre_build` event is a mod's only opportunity to calculate things like blueprint geometry, overlaps, and world positions. However, when a blueprint is built by a script using `build_blueprint` *there is no `pre_build` event.* This breaks mods that were doing important computations in pre_build.
 
-3) The `on_player_setup_blueprint` event is a mod's only chance to store its custom data into blueprint tags or make other needed alterations. However, as the name implies, this event only takes place when a *player* sets up a blueprint. Scripted blueprint creation, such as mods using `create_blueprint`, never calls this event and therefore data is lost whenever a scripted BP is created.
+3) The `on_player_setup_blueprint` event is a mod's only chance to make needed alterations to a blueprint before it becomes saved. However, as the name implies, this event only takes place when a *player* sets up a blueprint. Scripted blueprint creation, such as mods using `create_blueprint`, never calls this event and therefore data is lost whenever a scripted BP is created.
 
 4) Mutations to a blueprint are non-atomic with respect to the entities in the blueprint and can cause invalidation or reordering of indices, which are unfortunately also the keys into the blueprint. Stable keys and atomic mutations are needed to ensure one mod doesn't clobber another mod's edits.
 
-If (and only if) all mods involved in the blueprinting chain are using the Cooperative Blueprinting protocol, *all of these issues are fixed.*
+If all mods involved in the blueprinting chain are using the Cooperative Blueprinting protocol, *all of these issues are fixed.*
 
 ## Okay, you sold me, *how* do I use Cooperative Blueprinting?
 
 Because Cooperative Blueprinting needs to respond to Factorio events and raise custom events of its own, it needs to run inside of exactly one mod's control phase. This mod is called the **Host**. There are three ways to obtain a Host:
 
-1) **If your mod already depends on a Host mod, you have a Host.** The following library mods are already Cooperative Blueprinting Hosts and if you are depending on any of them, you already have full access to Cooperative Blueprinting. Some of those libraries are: (Note to library authors: feel free to submit a PR on this file if you want to add your mod to the list)
+1) **If your mod already depends on a Host mod, you already have a Host.** The following library mods are already Cooperative Blueprinting Hosts and if you are depending on any of them, you already have full access to Cooperative Blueprinting. Some of those libraries are: (Note to library authors: feel free to submit a PR on this file if you want to add your mod to the list)
 - Things `0-things`
 - BPLib `bplib`
 
@@ -158,6 +158,8 @@ Atomic operations can no longer be used in this phase. `set_blueprint_entities` 
 The following operations may be called during `on_pre_extract` (read operations) and `on_extract` (both read and write operations) using the supplied `blueprint_key` to access and edit the blueprint:
 
 ### `get_tag`
+
+Get a tag from a blueprint entry (read-only). This is a near drop-in replacement for `get_blueprint_entity_tag`.
 
 ```lua
 local err, tag = remote.call("cooperative-blueprinting-v1", "get_tag", blueprint_key, entry_key, tag_name)
