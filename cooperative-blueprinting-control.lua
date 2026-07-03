@@ -280,7 +280,7 @@ function remote_interface.get_host_name() return script.mod_name end
 
 ---Replaces the operation of `LuaItemStack|LuaRecord.build_blueprint` with a version that raises the `on_pre_build_blueprint` event before building the blueprint. This allows mods to inspect the blueprint before it is built.
 ---@param blueprintish LuaItemStack|LuaRecord
----@param build_blueprint_args LuaRecord.build_blueprint_param
+---@param build_blueprint_args LuaRecord.build_blueprint_param The arguments to pass to the native `build_blueprint` function. `raised_built` will be set to `true` unless explicitly passed as `false`.
 ---@return LuaEntity[]? entities The array of created ghosts returned by native `build_blueprint`.
 function remote_interface.build_blueprint(blueprintish, build_blueprint_args)
 	if build_blueprint_args.raise_built == nil then
@@ -331,9 +331,8 @@ function remote_interface.create_blueprint(blueprintish, create_blueprint_args)
 	extract(blueprintish, entities)
 end
 
----Get the entries of the blueprint being extracted. This is a read-operation
----and can ONLY be called SYNCHRONOUSLY during `on_pre_extract` or `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Get the entries of the blueprint being extracted. (Read)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param filter? CooperativeBlueprinting.EntryFilter Filter to select which entries to return. If omitted, all entries are returned.
 ---@return CooperativeBlueprinting.Entry[] entries The entries of the blueprint being extracted.
 function remote_interface.get_entries(key, filter)
@@ -346,9 +345,8 @@ function remote_interface.get_entries(key, filter)
 	return extraction_state.entries
 end
 
----Get the number of entries in the blueprint being extracted. This is a read-operation
----and can ONLY be called SYNCHRONOUSLY during `on_pre_extract` or `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Get the number of entries in the blueprint being extracted. (Read)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@return uint num_entries The number of entries in the blueprint being extracted.
 function remote_interface.get_num_entries(key)
 	local current_key = extraction_state.blueprint_key
@@ -360,9 +358,9 @@ function remote_interface.get_num_entries(key)
 	return #extraction_state.entries
 end
 
----Get a specific entry of the blueprint being extracted. This is a read-operation
+---Get a specific entry of the blueprint being extracted. (Read)
 ---and can ONLY be called SYNCHRONOUSLY during `on_pre_extract` or `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to retrieve.
 ---@return CooperativeBlueprinting.Entry? entry The entry at the given index, or `nil` if the index is out of bounds.
 function remote_interface.get_entry(key, index)
@@ -375,9 +373,8 @@ function remote_interface.get_entry(key, index)
 	return extraction_state.entries[index]
 end
 
----Get a tag of a specific entry of the blueprint being extracted. This is a read-operation
----and can ONLY be called SYNCHRONOUSLY during `on_pre_extract` or `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Get a tag of a specific entry of the blueprint being extracted. (Read)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to retrieve.
 ---@param tag string The tag to retrieve from the entry.
 ---@return AnyBasic? value The value of the tag, or `nil` if the entity or tag does not exist.
@@ -399,9 +396,8 @@ function remote_interface.get_tag(key, index, tag)
 	return entry_tags[tag]
 end
 
----Get the tags of a specific entry of the blueprint being extracted. This is a read-operation
----and can ONLY be called SYNCHRONOUSLY during `on_pre_extract` or `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Get the tags of a specific entry of the blueprint being extracted. (Read)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to retrieve.
 function remote_interface.get_tags(key, index)
 	local current_key = extraction_state.blueprint_key
@@ -420,9 +416,8 @@ function remote_interface.get_tags(key, index)
 	return entry.blueprint_entity.tags or {}
 end
 
----Set a tag on a specific entry of the blueprint being extracted. This is a write-operation
----and can ONLY be called SYNCHRONOUSLY during `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Set a tag on a specific entry of the blueprint being extracted. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to modify.
 ---@param tag string The tag to set on the entry.
 ---@param value AnyBasic? The value to set for the tag. If `nil`, the tag is removed.
@@ -460,9 +455,8 @@ function remote_interface.set_tag(key, index, tag, value)
 	return true
 end
 
----Set the tags on a specific entry of the blueprint being extracted. This is a write-operation
----and can ONLY be called SYNCHRONOUSLY during `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Set the tags on a specific entry of the blueprint being extracted. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to modify.
 ---@param tags Tags? The tags to set on the entry. If `nil`, all tags are removed.
 ---@return boolean success Whether the tags were set successfully. Returns `false` if the entry does not exist or has been deleted.
@@ -493,8 +487,8 @@ function remote_interface.set_tags(key, index, tags)
 	return true
 end
 
----Shallow merge the given tags with the entry's existing tags. This is a write-operation and can ONLY be called SYNCHRONOUSLY during `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Shallow merge the given tags with the entry's existing tags. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to modify.
 ---@param tags Tags The tags to merge with the entry's existing tags.
 ---@return boolean success Whether the tags were merged successfully. Returns `false` if the entry does not exist or has been deleted.
@@ -529,8 +523,8 @@ function remote_interface.merge_tags(key, index, tags)
 	return true
 end
 
----Delete a specific entry of the blueprint being extracted. This is a write-operation and can ONLY be called SYNCHRONOUSLY during `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Delete a specific entry of the blueprint being extracted. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to delete.
 ---@return boolean success Whether the entry was deleted successfully. Returns `false` if the entry does not exist or has already been deleted.
 function remote_interface.delete(key, index)
@@ -553,8 +547,8 @@ function remote_interface.delete(key, index)
 	return true
 end
 
----Insert a new entry into the blueprint being extracted. This is a write-operation and can ONLY be called SYNCHRONOUSLY during `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Insert a new entry into the blueprint being extracted. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param blueprint_entity BlueprintEntity The blueprint entity to insert.
 ---@param world_entity LuaEntity? The world entity to associate with the blueprint entity if any. If `nil`, the entry will be considered to have no associated world entity.
 ---@return boolean success Whether the entry was inserted successfully. Returns `false` if the entry could not be inserted.
@@ -583,8 +577,8 @@ function remote_interface.insert(key, blueprint_entity, world_entity)
 	return true
 end
 
----Replace the entity of an entry without changing its index. This is a write-operation and can ONLY be called SYNCHRONOUSLY during `on_extract`
----@param key CooperativeBlueprinting.BlueprintKey The key of the blueprint being extracted.
+---Replace the entity data of an entry without changing its index. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to replace.
 ---@param blueprint_entity Partial<BlueprintEntity> The new blueprint entity to set. If new values for position, orientation and wiring are not given, the old values will be preserved.
 ---@param world_entity LuaEntity? The new world entity to associate with the blueprint entity if any. If `nil`, the entry will be considered to have no associated world entity.

@@ -61,19 +61,18 @@ Once you have a Host, you must **replace each use of the above API calls and eve
 If using `build_blueprint` or `create_blueprint`, you need only replace these method calls with the below remote API calls. These new API calls are very close to drop-in replacements for the native calls. They have the same arguments and effect as the base game calls, but will raise the "missing" events to allow other mods to recognize that your script is engaging with a blueprint.
 
 ```lua
----@param blueprintish LuaItemStack|LuaRecord The blueprint to build.
----@param build_blueprint_args LuaRecord.build_blueprint_param The args to native `build_blueprint`. NOTE: unless explicitly set to `false`, `raise_built` will be forced to `true`.
----@return err string? If an error occurred, the reason.
----@return entities LuaEntity[]? The array of created ghosts returned by native `build_blueprint`.
-local err, entities = remote.call("cooperative-blueprinting-v1", "build_blueprint", blueprintish, build_blueprint_args)
+---Replaces the operation of `LuaItemStack|LuaRecord.build_blueprint` with a version that raises the `on_pre_build_blueprint` event before building the blueprint. This allows mods to inspect the blueprint before it is built.
+---@param blueprintish LuaItemStack|LuaRecord
+---@param build_blueprint_args LuaRecord.build_blueprint_param The arguments to pass to the native `build_blueprint` function. `raised_built` will be set to `true` unless explicitly passed as `false`.
+---@return LuaEntity[]? entities The array of created ghosts returned by native `build_blueprint`.
+local entities = remote.call("cooperative-blueprinting-v1", "build_blueprint", blueprintish, build_blueprint_args)
 ```
 
 ```lua
----@param blueprintish LuaItemStack|LuaRecord The blueprint to setup.
----@param create_blueprint_args LuaRecord.create_blueprint_param The args to native `create_blueprint`.
----@return err string? If an error occurred, the reason.
----@return {[uint32]: LuaEntity}? Map from blueprint indices to world entities as returned by native `create_blueprint`.
-local err, entity_map = remote.call("cooperative-blueprinting-v1", "create_blueprint", blueprintish, create_blueprint_args)
+---Replaces the operation of `LuaItemStack|LuaRecord.create_blueprint` with a version that performs the Cooperative Blueprinting extraction process.
+---@param blueprintish LuaItemStack|LuaRecord The blueprint to setup. Note that this must be a blueprint in a setupable state (valid to call native `create_blueprint` on).
+---@param create_blueprint_args LuaRecord.create_blueprint_param
+remote.call("cooperative-blueprinting-v1", "create_blueprint", blueprintish, create_blueprint_args)
 ```
 
 > [!NOTE]
@@ -89,15 +88,23 @@ The Cooperative Blueprint Host raises a custom event named `cooperative-blueprin
 > This event does NOT completely replace the `on_pre_build` event. It is ONLY called when a blueprint is being prebuilt. For pre-building of non-blueprint entities, you must continue to monitor Factorio's native `on_pre_build` event as you normally would.
 
 ```lua
----@alias CooperativeBlueprintEditing.OrientationData {position: MapPosition, direction: defines.direction, flip_horizontal: boolean, flip_vertical: boolean}
+---Information given about the orientation of a blueprint when being placed.
+---This matches e.g. the `on_pre_build` event data.
+---@class (exact) CooperativeBlueprinting.BlueprintOrientationData
+---@field position MapPosition The position where the blueprint is being built.
+---@field direction defines.direction The direction in which the blueprint is being built.
+---@field flip_horizontal? boolean Whether the blueprint is being flipped horizontally.
+---@field flip_vertical? boolean Whether the blueprint is being flipped vertically.
 
----@class CooperativeBlueprintEditing.OnPreBuildBlueprint
+---Event fired when a blueprint is being prebuilt.
+---@class CooperativeBlueprinting.OnPreBuildBlueprint
 ---@field name defines.events
 ---@field tick int64
 ---@field blueprint LuaItemStack|LuaRecord The blueprint being prebuilt.
+---@field force_index int The force of the blueprint being prebuilt.
 ---@field player_index? int If present, the player who prebuilt the blueprint. If absent, the blueprint is built by script.
 ---@field surface_index int The index of the surface where the blueprint was built
----@field orientation CooperativeBlueprintEditing.OrientationData The orientation in which the blueprint was built.
+---@field orientation CooperativeBlueprinting.BlueprintOrientationData The orientation in which the blueprint was built.
 ---@field build_mode defines.build_mode The build mode.
 
 script.on_event("cooperative-blueprinting-v1-on_pre_build_blueprint",
@@ -109,7 +116,7 @@ script.on_event("cooperative-blueprinting-v1-on_pre_build_blueprint",
 
 ## Blueprint editing events
 
-In Cooperative Blueprinting, mods edit blueprints by calling atomic operations during a particular custom event sequence. During the below events, you MUST use ONLY the below-specified remote API calls to read or write the blueprint. **Using native Factorio API to manipulate the blueprint will lead to invalid results or blueprint corruption.**
+In Cooperative Blueprinting, mods edit blueprints by calling atomic operations during a particular custom event sequence. During the below events, you MUST use ONLY the below-specified remote API calls to read or write the blueprint.
 
 When editing a blueprint, you have access to a stable view of the blueprint composed of *entries*. Each entry generally corresponds to a Factorio `BlueprintEntity`, however, these entries have stable keys that never change during editing. Each entry also correctly preserves its corresponding world entity from the original blueprint `mapping`. You may atomically add, delete, change, or tag entries using the below remote APIs.
 
@@ -117,13 +124,14 @@ Once all mods have had a chance to atomically manipulate the entries, the Cooper
 
 ### Event: `cooperative-blueprinting-v1-on_pre_extract`
 
-This event fires at the beginning of a blueprint extraction, giving mods a chance to examine the unmodified blueprint before changes are made. **The blueprint is read-only during this event. Calling read methods is OK. Calling any mutation will raise a Lua error.**
+This event fires at the beginning of a blueprint extraction, giving mods a chance to examine the unmodified blueprint before changes are made. **The blueprint is read-only during this event.**
 
 ```lua
----@class CooperativeBlueprintEditing.OnPreExtract
+---Event fired at the beginning of the blueprint extraction process. The blueprint is read-only at this point.
+---@class CooperativeBlueprinting.OnPreExtract
 ---@field name defines.events
 ---@field tick int64
----@field blueprint_key string|int64 An opaque key used to identify the blueprint being edited; you must pass this key unmodified to the API methods in order to access the blueprint.
+---@field blueprint_key CooperativeBlueprinting.BlueprintKey You must pass this key unmodified to the edit API methods in order to access the blueprint.
 ```
 
 ### Event: `cooperative-blueprinting-v1-on_extract`
@@ -131,10 +139,10 @@ This event fires at the beginning of a blueprint extraction, giving mods a chanc
 This is the primary event during which mods can perform atomic blueprint editing.
 
 ```lua
----@class CooperativeBlueprintEditing.OnExtract
+---@class CooperativeBlueprinting.OnExtract
 ---@field name defines.events
 ---@field tick int64
----@field blueprint_key string|int64 An opaque key used to identify the blueprint being edited; you must pass this key unmodified to the API methods in order to access the blueprint.
+---@field blueprint_key CooperativeBlueprinting.BlueprintKey You must pass this key unmodified to the edit API methods in order to access the blueprint.
 ```
 
 ### Event: `cooperative-blueprinting-v1-on_post_extract`
@@ -142,33 +150,156 @@ This is the primary event during which mods can perform atomic blueprint editing
 This event is for infrastructure mods like Things to perform specialized blueprint fixup that depends on the final indices of blueprint entities.
 
 > [!WARNING]
-> Mods using this event incorrectly will defeat the purpose of cooperative editing. If you don't have a clear and complete understanding of why you need this event, you mustn't use it. This event will be removed from the public spec if it is abused in ways that break cooperating mods.
+> Mods using this event incorrectly will defeat the purpose of cooperative editing. This is not "I want my mod to run after your mod." If you don't have a clear and complete understanding of why you need this event, you mustn't use it. This event will be removed from the public spec if it is abused in ways that break cooperating mods.
 
 Atomic operations can no longer be used in this phase. `set_blueprint_entities` MUST NOT be used in this phase. Only `set_blueprint_entity_tag` and `set_blueprint_entity_tags` are permitted here.
 
 ```lua
----@class CooperativeBlueprintEditing.OnPostExtract
+---@class CooperativeBlueprinting.OnPostExtract
 ---@field name defines.events
 ---@field tick int64
----@field blueprint_key string|int64 An opaque key used to identify the blueprint being edited; you must pass this key unmodified to the API methods in order to access the blueprint.
+---@field blueprint LuaItemStack|LuaRecord The blueprint that was extracted.
+---@field mapping table<uint32, LuaEntity> The mapping from blueprint entity indices to world entity indices after extraction. This may be different from the original mapping if the blueprint was modified during extraction.
 ```
 
 ## Blueprint editing operations
 
-The following operations may be called during `on_pre_extract` (read operations) and `on_extract` (both read and write operations) using the supplied `blueprint_key` to access and edit the blueprint:
+The following operations may be called during `on_pre_extract` (read operations) and `on_extract` (both read and write operations) using the supplied `blueprint_key` to access and edit the blueprint.
 
-### `get_tag`
+The methods operate on `Entry`s that have the following type signature:
+```lua
+---@class CooperativeBlueprinting.Entry
+---@field blueprint_entity BlueprintEntity The Factorio blueprint entity.
+---@field world_entity LuaEntity? The entity in the world that this entry corresponds to, if it exists.
+---@field index uint The fixed index of this entry among the entries
+```
+Every `Entry` has a stable index and mapping to its corresponding world entity.
 
-Get a tag from a blueprint entry (read-only). This is a near drop-in replacement for `get_blueprint_entity_tag`.
+These methods may not be called asynchronously and will raise errors if so. They MUST be called in-line with the corresponding extraction events.
+
+These methods are all available on the remote interface `cooperative-blueprinting-v1`:
 
 ```lua
-local err, tag = remote.call("cooperative-blueprinting-v1", "get_tag", blueprint_key, entry_key, tag_name)
-```
+---Get the entries of the blueprint being extracted. (Read)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param filter? CooperativeBlueprinting.EntryFilter Filter to select which entries to return. If omitted, all entries are returned.
+---@return CooperativeBlueprinting.Entry[] entries The entries of the blueprint being extracted.
+function remote_interface.get_entries(key, filter)
+end
 
+---Get the number of entries in the blueprint being extracted. (Read)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@return uint num_entries The number of entries in the blueprint being extracted.
+function remote_interface.get_num_entries(key)
+end
+
+---Get a specific entry of the blueprint being extracted. (Read)
+---and can ONLY be called SYNCHRONOUSLY during `on_pre_extract` or `on_extract`
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param index uint The index of the entry to retrieve.
+---@return CooperativeBlueprinting.Entry? entry The entry at the given index, or `nil` if the index is out of bounds.
+function remote_interface.get_entry(key, index)
+end
+
+---Get a tag of a specific entry of the blueprint being extracted. (Read)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param index uint The index of the entry to retrieve.
+---@param tag string The tag to retrieve from the entry.
+---@return AnyBasic? value The value of the tag, or `nil` if the entity or tag does not exist.
+function remote_interface.get_tag(key, index, tag)
+end
+
+---Get the tags of a specific entry of the blueprint being extracted. (Read)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param index uint The index of the entry to retrieve.
+function remote_interface.get_tags(key, index)
+end
+
+---Set a tag on a specific entry of the blueprint being extracted. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param index uint The index of the entry to modify.
+---@param tag string The tag to set on the entry.
+---@param value AnyBasic? The value to set for the tag. If `nil`, the tag is removed.
+---@return boolean success Whether the tag was set successfully. Returns `false` if the entry does not exist or has been deleted.
+function remote_interface.set_tag(key, index, tag, value)
+end
+
+---Set the tags on a specific entry of the blueprint being extracted. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param index uint The index of the entry to modify.
+---@param tags Tags? The tags to set on the entry. If `nil`, all tags are removed.
+---@return boolean success Whether the tags were set successfully. Returns `false` if the entry does not exist or has been deleted.
+function remote_interface.set_tags(key, index, tags)
+end
+
+---Shallow merge the given tags with the entry's existing tags. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param index uint The index of the entry to modify.
+---@param tags Tags The tags to merge with the entry's existing tags.
+---@return boolean success Whether the tags were merged successfully. Returns `false` if the entry does not exist or has been deleted.
+function remote_interface.merge_tags(key, index, tags)
+end
+
+---Delete a specific entry of the blueprint being extracted. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param index uint The index of the entry to delete.
+---@return boolean success Whether the entry was deleted successfully. Returns `false` if the entry does not exist or has already been deleted.
+function remote_interface.delete(key, index)
+end
+
+---Insert a new entry into the blueprint being extracted. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param blueprint_entity BlueprintEntity The blueprint entity to insert.
+---@param world_entity LuaEntity? The world entity to associate with the blueprint entity if any. If `nil`, the entry will be considered to have no associated world entity.
+---@return boolean success Whether the entry was inserted successfully. Returns `false` if the entry could not be inserted.
+function remote_interface.insert(key, blueprint_entity, world_entity)
+end
+
+---Replace the entity data of an entry without changing its index. (Write)
+---@param key CooperativeBlueprinting.BlueprintKey
+---@param index uint The index of the entry to replace.
+---@param blueprint_entity Partial<BlueprintEntity> The new blueprint entity to set. If new values for position, orientation and wiring are not given, the old values will be preserved.
+---@param world_entity LuaEntity? The new world entity to associate with the blueprint entity if any. If `nil`, the entry will be considered to have no associated world entity.
+function remote_interface.replace(key, index, blueprint_entity, world_entity)
+end
+
+```
 
 ## Technical: Hosting
 
 **NOTE: You can stop reading here unless you are trying to write a Cooperative Blueprinting Host mod. Normal users of Cooperative Blueprinting need not worry about this.**
 
-### Deciding the Host
-Because the Host is a "highlander", there is a protocol for choosing exactly one Host in the presence of multiple potentials. In general, the earlier the host is in the load order the better, so the protocol is basically "whoever loads first." This is coordinated during the data phase using `mod_data` as follows:
+### Embedding the Code
+
+You need two files from https://github.com/project-cybersyn/cooperative-blueprinting: `cooperative-blueprinting-data.lua` and `cooperative-blueprinting-control.lua`
+
+I would recommend embedding the `cooperative-blueprinting` repo as a Git submodule so as to keep updated with fixes and features, but you may also embed the files directly.
+
+### Data Phase
+
+Because the Host is a "highlander", there is a protocol for choosing exactly one Host in the presence of multiple potentials. In general, the earlier the host is in the load order the better, so the protocol is basically "whoever loads first."
+
+This is automatically handled by the data phase code. You can just call it from your `data.lua`:
+
+```lua
+-- data.lua
+local cbp = require("cooperative-blueprinting-data")
+cbp.cooperative_blueprinting_data_phase("your-mod-name")
+```
+
+### Control Phase
+
+The control phase code will automatically determine if your mod was chosen to Host and implement the protocols accordingly. In your `control.lua`:
+
+```lua
+-- control.lua
+local cbp = require("cooperative-blueprinting-control")
+local binds = cbp.cooperative_blueprinting_control_phase()
+if binds then
+  for event, handler in pairs(binds) do
+    script.on_event(event, handler)
+  end
+end
+```
+
+You may use other methods of binding events as appropriate. CBP's event handlers MUST recieve complete unfiltered event streams.
