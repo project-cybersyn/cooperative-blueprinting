@@ -36,7 +36,7 @@ end
 ---@return int? player_index
 local function player_identification_to_index(player_identification)
 	if not player_identification then return nil end
-	if type(player_identification) == "table" then
+	if type(player_identification) == "userdata" then
 		return player_identification.index
 	else
 		local player = game.get_player(player_identification)
@@ -48,7 +48,7 @@ end
 ---@return int? surface_index
 local function surface_identification_to_index(surface_identification)
 	if not surface_identification then return nil end
-	if type(surface_identification) == "table" then
+	if type(surface_identification) == "userdata" then
 		return surface_identification.index
 	else
 		local surface = game.get_surface(surface_identification)
@@ -60,7 +60,7 @@ end
 ---@return int? force_index
 local function force_identification_to_index(force_identification)
 	if not force_identification then return nil end
-	if type(force_identification) == "table" then
+	if type(force_identification) == "userdata" then
 		return force_identification.index
 	else
 		local force = game.forces[force_identification]
@@ -642,7 +642,7 @@ function lib.cooperative_blueprinting_control_phase()
 		return
 	end
 
-	if cb_data.host ~= script.mod_name then
+	if cb_data.host_name ~= script.mod_name then
 		log({
 			"",
 			"Cooperative Blueprinting control phase: host is '",
