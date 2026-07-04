@@ -39,6 +39,7 @@ local function player_identification_to_index(player_identification)
 	if type(player_identification) == "userdata" then
 		return player_identification.index
 	else
+		---@diagnostic disable-next-line: param-type-mismatch
 		local player = game.get_player(player_identification)
 		if player then return player.index end
 	end
@@ -51,6 +52,7 @@ local function surface_identification_to_index(surface_identification)
 	if type(surface_identification) == "userdata" then
 		return surface_identification.index
 	else
+		---@diagnostic disable-next-line: param-type-mismatch
 		local surface = game.get_surface(surface_identification)
 		if surface then return surface.index end
 	end
@@ -265,7 +267,6 @@ local function on_player_setup_blueprint(ev)
 	if not lazy_bp_to_world or not lazy_bp_to_world.valid then return end
 	local bp_to_world = lazy_bp_to_world.get() --[[@as table<uint32, LuaEntity>? ]]
 	if not bp_to_world then return end
-
 	extract(bp, bp_to_world)
 end
 
