@@ -153,10 +153,7 @@ local extraction_state = {}
 local function begin_extraction(blueprintish, map)
 	---@type CooperativeBlueprinting.Entry[]
 	local entries = {}
-	local bp_entities = blueprintish.get_blueprint_entities()
-	if not bp_entities then
-		error("blueprintish must be a blueprint with entities")
-	end
+	local bp_entities = blueprintish.get_blueprint_entities() or {}
 	for i, bp_entity in ipairs(bp_entities) do
 		local world_entity = map[bp_entity.entity_number]
 		entries[i] = {
