@@ -613,6 +613,13 @@ function remote_interface.replace(key, index, blueprint_entity, world_entity)
 	return true
 end
 
+---Debug method to force the blueprint to be spliced. This is useful for testing and debugging, but should not be used in production use cases.
+function remote_interface._force_splice(key)
+	local current_key = extraction_state.blueprint_key
+	if (not current_key) or (current_key ~= key) then return end
+	extraction_state.spliced = true
+end
+
 --------------------------------------------------------------------------------
 -- HOST REGISTRATION
 --------------------------------------------------------------------------------
