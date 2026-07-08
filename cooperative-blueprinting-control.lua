@@ -579,7 +579,7 @@ end
 ---@param key CooperativeBlueprinting.BlueprintKey
 ---@param index uint The index of the entry to replace.
 ---@param blueprint_entity Partial<BlueprintEntity> The new blueprint entity to set. If new values for position, orientation and wiring are not given, the old values will be preserved.
----@param world_entity LuaEntity? The new world entity to associate with the blueprint entity if any. If `nil`, the entry will be considered to have no associated world entity.
+---@param world_entity LuaEntity? The new world entity to associate with the blueprint entity if any. If `nil`, any existing world entity will be preserved.
 function remote_interface.replace(key, index, blueprint_entity, world_entity)
 	local current_key = extraction_state.blueprint_key
 	if (not current_key) or (current_key ~= key) then
@@ -606,7 +606,7 @@ function remote_interface.replace(key, index, blueprint_entity, world_entity)
 	end
 
 	entry.blueprint_entity = bp_entity
-	entry.world_entity = world_entity
+	if world_entity ~= nil then entry.world_entity = world_entity end
 	entry.spliced = true
 	entry.retagged = true
 	extraction_state.spliced = true
